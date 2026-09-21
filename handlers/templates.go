@@ -19,14 +19,12 @@ func init() {
 	// load templates
 	templatesFS, err := fs.Sub(templateAssets, "templates")
 	if err != nil {
-		fmt.Errorf("Error getting embedded path for templates: %w", err)
-		panic(err)
+		panic(fmt.Errorf("Error getting embedded path for templates: %w", err))
 	}
 
 	t, err := template.ParseFS(templatesFS, "map.html")
 	if err != nil {
-		fmt.Errorf("Could not resolve template: %w", err)
-		panic(err)
+		panic(fmt.Errorf("Could not resolve template: %w", err))
 	}
 	templates = t
 }
@@ -34,7 +32,7 @@ func init() {
 // executeTemplates first tries to find the template with the given name for
 // the ServiceSet. If that fails because it is not available, an HTTP status
 // Internal Server Error is returned.
-func executeTemplate(w http.ResponseWriter, name string, data interface{}) (int, error) {
+func executeTemplate(w http.ResponseWriter, name string, data any) (int, error) {
 	t := templates.Lookup(name)
 	if t == nil {
 		return http.StatusInternalServerError, fmt.Errorf("template not found %q", name)

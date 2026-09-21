@@ -167,7 +167,7 @@ type ServiceInfo struct {
 
 // logError writes to the configured ServiceSet.errorWriter if available
 // or the standard logger otherwise.
-func (s *ServiceSet) logError(format string, args ...interface{}) {
+func (s *ServiceSet) logError(format string, args ...any) {
 	if s.errorWriter != nil {
 		s.errorWriter.Write([]byte(fmt.Sprintf(format, args...)))
 	} else {
@@ -228,8 +228,8 @@ func (s *ServiceSet) tilesetHandler(w http.ResponseWriter, r *http.Request) {
 func (s *ServiceSet) IDFromURLPath(id string) string {
 	root := s.rootURL.Path + "/"
 
-	if strings.HasPrefix(id, root) {
-		id = strings.TrimPrefix(id, root)
+	if after, ok := strings.CutPrefix(id, root); ok {
+		id = after
 
 		// test exact match first
 		if _, ok := s.tilesets[id]; ok {

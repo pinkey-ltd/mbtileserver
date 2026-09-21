@@ -122,7 +122,7 @@ func (ts *Tileset) tileFormatString() string {
 // TileJSON returns the TileJSON (as a map of strings to interface{} values)
 // for the tileset.  This can be rendered into templates or returned via a
 // handler.
-func (ts *Tileset) TileJSON(svcURL string, query string) (map[string]interface{}, error) {
+func (ts *Tileset) TileJSON(svcURL string, query string) (map[string]any, error) {
 	if ts == nil || !ts.published {
 		return nil, fmt.Errorf("Tileset does not exist")
 	}
@@ -130,7 +130,7 @@ func (ts *Tileset) TileJSON(svcURL string, query string) (map[string]interface{}
 	db := ts.db
 
 	imgFormat := db.GetTileFormat().String()
-	out := map[string]interface{}{
+	out := map[string]any{
 		"tilejson": "2.1.0",
 		"scheme":   "xyz",
 		"format":   imgFormat,

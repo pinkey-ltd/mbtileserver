@@ -43,7 +43,7 @@ type arcGISLayer struct {
 	Description       string            `json:"description"`
 	GeometryType      string            `json:"geometryType"`
 	CopyrightText     string            `json:"copyrightText"`
-	ParentLayer       interface{}       `json:"parentLayer"`
+	ParentLayer       any               `json:"parentLayer"`
 	SubLayers         []arcGISLayerStub `json:"subLayers"`
 	MinScale          float64           `json:"minScale"`
 	MaxScale          float64           `json:"maxScale"`
@@ -51,12 +51,12 @@ type arcGISLayer struct {
 	Extent            arcGISExtent      `json:"extent"`
 	HasAttachments    bool              `json:"hasAttachments"`
 	HTMLPopupType     string            `json:"htmlPopupType"`
-	DrawingInfo       interface{}       `json:"drawingInfo"`
-	DisplayField      interface{}       `json:"displayField"`
-	Fields            []interface{}     `json:"fields"`
-	TypeIDField       interface{}       `json:"typeIdField"`
-	Types             interface{}       `json:"types"`
-	Relationships     []interface{}     `json:"relationships"`
+	DrawingInfo       any               `json:"drawingInfo"`
+	DisplayField      any               `json:"displayField"`
+	Fields            []any             `json:"fields"`
+	TypeIDField       any               `json:"typeIdField"`
+	Types             any               `json:"types"`
+	Relationships     []any             `json:"relationships"`
 	Capabilities      string            `json:"capabilities"`
 	CurrentVersion    float32           `json:"currentVersion"`
 }
@@ -72,7 +72,7 @@ var webMercatorSR = arcGISSpatialReference{Wkid: 3857}
 var geographicSR = arcGISSpatialReference{Wkid: 4326}
 
 func arcgisInfoJSON() ([]byte, error) {
-	out := map[string]interface{}{
+	out := map[string]any{
 		"currentVersion": 10.71,
 		"fullVersion":    "10.7.1",
 		"soapUrl":        nil,
@@ -142,7 +142,7 @@ func (ts *Tileset) arcgisServiceJSON() ([]byte, error) {
 	}
 	extent := geoBoundsToWMExtent(bounds)
 
-	tileInfo := map[string]interface{}{
+	tileInfo := map[string]any{
 		"rows": 256,
 		"cols": 256,
 		"dpi":  dpi,
@@ -164,7 +164,7 @@ func (ts *Tileset) arcgisServiceJSON() ([]byte, error) {
 		"Credits":  credits,
 	}
 
-	out := map[string]interface{}{
+	out := map[string]any{
 		"currentVersion":            "10.4",
 		"id":                        ts.id,
 		"name":                      name,
@@ -282,7 +282,7 @@ func (ts *Tileset) arcgisLayersJSON() ([]byte, error) {
 	// 	Capabilities:      "Map",
 	// }
 
-	out := map[string]interface{}{
+	out := map[string]any{
 		// "layers": layers,
 		"layers": []string{},
 		"tables": []string{},
@@ -330,10 +330,10 @@ func (ts *Tileset) arcgisLegendJSON() ([]byte, error) {
 	name, _ := metadata["name"].(string)
 
 	// TODO: pull the legend from ArcGIS specific metadata tables
-	var elements [0]interface{}
-	var layers [1]map[string]interface{}
+	var elements [0]any
+	var layers [1]map[string]any
 
-	layers[0] = map[string]interface{}{
+	layers[0] = map[string]any{
 		"layerId":   0,
 		"layerName": name,
 		"layerType": "",
@@ -342,7 +342,7 @@ func (ts *Tileset) arcgisLegendJSON() ([]byte, error) {
 		"legend":    elements,
 	}
 
-	out := map[string]interface{}{
+	out := map[string]any{
 		"layers": layers,
 	}
 
@@ -451,7 +451,7 @@ func geoBoundsToWMExtent(bounds []float64) arcGISExtent {
 }
 
 // Cast interface to a string if not nil, otherwise empty string
-func toString(s interface{}) string {
+func toString(s any) string {
 	if s != nil {
 		return s.(string)
 	}

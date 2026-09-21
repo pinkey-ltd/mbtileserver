@@ -309,7 +309,7 @@ func serve() {
 		log.Fatalln("Could not construct ServiceSet")
 	}
 
-	for _, path := range strings.Split(tilePath, ",") {
+	for path := range strings.SplitSeq(tilePath, ",") {
 		// Discover all tilesets
 		log.Infof("Searching for tilesets in %v\n", path)
 		filenames, err := mbtiles.FindMBtiles(path)
@@ -346,7 +346,7 @@ func serve() {
 		}
 		defer watcher.Close()
 
-		for _, path := range strings.Split(tilePath, ",") {
+		for path := range strings.SplitSeq(tilePath, ",") {
 			log.Infof("Watching %v\n", path)
 			err = watcher.WatchDir((path))
 			if err != nil {
