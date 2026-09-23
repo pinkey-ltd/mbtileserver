@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -133,6 +134,9 @@ func (ts *Tileset) arcgisServiceJSON() ([]byte, error) {
 		})
 	}
 
+	if len(lods) == 0 {
+		return nil, fmt.Errorf("no levels of detail available for zoom range %d to %d", minZoom, maxZoom)
+	}
 	minScale := lods[0].Scale
 	maxScale := lods[len(lods)-1].Scale
 

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // ServiceSetConfig provides configuration options for a ServiceSet
@@ -28,6 +29,7 @@ type ServiceSetConfig struct {
 // It provides access to all tilesets from a root URL.
 type ServiceSet struct {
 	tilesets map[string]*Tileset
+	mu       sync.RWMutex
 
 	enableServiceList         bool
 	enableTileJSON            bool
@@ -68,6 +70,8 @@ func New(cfg *ServiceSetConfig) (*ServiceSet, error) {
 // AddTileset adds a single tileset identified by idGenerator using the filename.
 // If a service already exists with that ID, an error is returned.
 func (s *ServiceSet) AddTileset(filename, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, ok := s.tilesets[id]; ok {
 		return fmt.Errorf("Tileset already exists for ID: %q", id)
 	}
@@ -87,7 +91,9 @@ func (s *ServiceSet) AddTileset(filename, id string) error {
 // Otherwise, this returns an error.
 // Any errors encountered updating the Tileset are returned.
 func (s *ServiceSet) UpdateTileset(id string) error {
+	s.mu.RLock()
 	ts, ok := s.tilesets[id]
+	s.mu.RUnlock()
 	if !ok {
 		return fmt.Errorf("Tileset does not exist with ID: %q", id)
 	}
@@ -105,18 +111,22 @@ func (s *ServiceSet) UpdateTileset(id string) error {
 // If it does not exist, this returns without error.
 // Any errors encountered removing the Tileset are returned.
 func (s *ServiceSet) RemoveTileset(id string) error {
+	s.mu.Lock()
 	ts, ok := s.tilesets[id]
 	if !ok {
+		s.mu.Unlock()
 		return nil
 	}
 
 	err := ts.delete()
 	if err != nil {
+		s.mu.Unlock()
 		return err
 	}
 
 	// remove from tilesets and router
 	delete(s.tilesets, id)
+	s.mu.Unlock()
 
 	return nil
 }
@@ -125,28 +135,34 @@ func (s *ServiceSet) RemoveTileset(id string) error {
 // tileset is being updated.
 // This is ignored if the tileset does not exist.
 func (s *ServiceSet) LockTileset(id string) {
+	s.mu.RLock()
 	ts, ok := s.tilesets[id]
+	s.mu.RUnlock()
 	if !ok || ts == nil {
 		return
 	}
 
-	ts.locked = true
+	ts.locked.Store(true)
 }
 
 // UnlockTileset removes the write mutex on the tileset.
 // This is ignored if the tileset does not exist.
 func (s *ServiceSet) UnlockTileset(id string) {
+	s.mu.RLock()
 	ts, ok := s.tilesets[id]
+	s.mu.RUnlock()
 	if !ok || ts == nil {
 		return
 	}
 
-	ts.locked = false
+	ts.locked.Store(false)
 }
 
 // HasTileset returns true if the tileset identified by id exists within this
 // ServiceSet.
 func (s *ServiceSet) HasTileset(id string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if _, ok := s.tilesets[id]; ok {
 		return true
 	}
@@ -155,6 +171,8 @@ func (s *ServiceSet) HasTileset(id string) bool {
 
 // Size returns the number of tilesets in this ServiceSet
 func (s *ServiceSet) Size() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return len(s.tilesets)
 }
 
@@ -182,14 +200,21 @@ func (s *ServiceSet) serviceListHandler(w http.ResponseWriter, r *http.Request) 
 	services := []ServiceInfo{}
 
 	// sort ids alpabetically
+	s.mu.RLock()
 	var ids []string
 	for id := range s.tilesets {
 		ids = append(ids, id)
 	}
+	s.mu.RUnlock()
 	sort.Strings(ids)
 
 	for _, id := range ids {
-		ts := s.tilesets[id]
+		s.mu.RLock()
+		ts, ok := s.tilesets[id]
+		s.mu.RUnlock()
+		if !ok {
+			continue
+		}
 		services = append(services, ServiceInfo{
 			ImageType: ts.tileFormatString(),
 			URL:       fmt.Sprintf("%s/%s", rootURL, id),
@@ -220,7 +245,17 @@ func (s *ServiceSet) tilesetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.tilesets[id].router.ServeHTTP(w, r)
+	// take a snapshot of the tileset under a read lock, then serve
+	// the request outside the lock
+	s.mu.RLock()
+	ts, ok := s.tilesets[id]
+	s.mu.RUnlock()
+	if !ok || ts == nil {
+		http.Error(w, "404 page not found", http.StatusNotFound)
+		return
+	}
+
+	ts.router.ServeHTTP(w, r)
 }
 
 // IDFromURLPath extracts a tileset ID from a URL Path.
@@ -232,7 +267,7 @@ func (s *ServiceSet) IDFromURLPath(id string) string {
 		id = after
 
 		// test exact match first
-		if _, ok := s.tilesets[id]; ok {
+		if s.HasTileset(id) {
 			return id
 		}
 
@@ -258,7 +293,7 @@ func (s *ServiceSet) IDFromURLPath(id string) string {
 	}
 
 	// make sure tileset exists
-	if _, ok := s.tilesets[id]; ok {
+	if s.HasTileset(id) {
 		return id
 	}
 

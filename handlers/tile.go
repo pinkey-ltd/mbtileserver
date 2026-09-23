@@ -27,6 +27,10 @@ type tileCoord struct {
 // filename extension (e.g. "42.png") which is removed before parsing the
 // number, and returned, too. In case an error occurred during parsing or if the
 // values are not in the expected interval, the returned error is non-nil.
+// maxZoomLevel is the maximum practical zoom level for MBTiles (2^31 tiles
+// per axis would overflow int64 tile coordinates).
+const maxZoomLevel = 30
+
 func tileCoordFromString(z, x, y string) (tc tileCoord, ext string, err error) {
 	if tc.z, err = strconv.ParseInt(z, 10, 64); err != nil {
 		err = fmt.Errorf("cannot parse zoom level: %v", err)
@@ -36,11 +40,15 @@ func tileCoordFromString(z, x, y string) (tc tileCoord, ext string, err error) {
 		errMsgParse = "cannot parse %s coordinate axis: %v"
 		errMsgOOB   = "%s coordinate (%d) is out of bounds for zoom level %d"
 	)
+	if tc.z < 0 || tc.z > maxZoomLevel {
+		err = fmt.Errorf("zoom level (%d) is out of bounds [0, %d]", tc.z, maxZoomLevel)
+		return
+	}
 	if tc.x, err = strconv.ParseInt(x, 10, 64); err != nil {
 		err = fmt.Errorf(errMsgParse, "x", err)
 		return
 	}
-	if tc.x >= (1 << tc.z) {
+	if tc.x < 0 || tc.x >= (1<<uint64(tc.z)) {
 		err = fmt.Errorf(errMsgOOB, "x", tc.x, tc.z)
 		return
 	}
@@ -52,7 +60,7 @@ func tileCoordFromString(z, x, y string) (tc tileCoord, ext string, err error) {
 		err = fmt.Errorf(errMsgParse, "y", err)
 		return
 	}
-	if tc.y >= (1 << tc.z) {
+	if tc.y < 0 || tc.y >= (1<<uint64(tc.z)) {
 		err = fmt.Errorf(errMsgOOB, "y", tc.y, tc.z)
 		return
 	}
@@ -60,7 +68,10 @@ func tileCoordFromString(z, x, y string) (tc tileCoord, ext string, err error) {
 }
 
 func calcScaleResolution(zoomLevel int, dpi uint8) (float64, float64) {
-	var denom = 1 << zoomLevel
+	if zoomLevel < 0 {
+		zoomLevel = 0
+	}
+	var denom = 1 << uint(zoomLevel)
 	resolution := initialResolution / float64(denom)
 	scale := float64(dpi) * 39.37 * resolution // 39.37 in/m
 	return scale, resolution

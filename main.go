@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"golang.org/x/crypto/acme"
@@ -388,7 +389,13 @@ func serve() {
 		if port == 443 {
 			go func(c *echo.Echo) {
 				fmt.Printf("HTTP server with redirect started on %v:80\n", host)
-				log.Fatal(e.Start(fmt.Sprintf("%v:%v", host, 80)))
+				redirectServer := &http.Server{
+					Handler:           e,
+					ReadHeaderTimeout: 10 * time.Second,
+					ReadTimeout:       30 * time.Second,
+					IdleTimeout:       120 * time.Second,
+				}
+				log.Fatal(redirectServer.ListenAndServe())
 			}(e)
 		}
 	}
@@ -406,7 +413,12 @@ func serve() {
 		log.Fatal(err)
 	}
 
-	server := &http.Server{Handler: e}
+	server := &http.Server{
+		Handler:           e,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	// Listen for SIGHUP (graceful shutdown)
 	go func(e *echo.Echo) {
@@ -448,7 +460,9 @@ func serve() {
 			e.AutoTLSManager.Cache = autocert.DirCache(".certs")
 			e.AutoTLSManager.HostPolicy = autocert.HostWhitelist(domain)
 
-			server.TLSConfig = new(tls.Config)
+			server.TLSConfig = &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			}
 			server.TLSConfig.GetCertificate = e.AutoTLSManager.GetCertificate
 			server.TLSConfig.NextProtos = append(server.TLSConfig.NextProtos, acme.ALPNProto)
 			if !e.DisableHTTP2 {
@@ -517,7 +531,7 @@ func supervise() {
 	}
 
 	var child *exec.Cmd
-	shutdown := false
+	var shutdown atomic.Bool
 
 	// Graceful shutdown on Ctrl + C
 	go func() {
@@ -526,7 +540,7 @@ func supervise() {
 
 		<-interrupt
 
-		shutdown = true
+		shutdown.Store(true)
 		fmt.Println("\nShutting down...")
 
 		if child != nil {
@@ -543,7 +557,7 @@ func supervise() {
 			killFork(child)
 		}
 
-		if shutdown {
+		if shutdown.Load() {
 			break
 		}
 

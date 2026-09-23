@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -23,7 +25,7 @@ type Tileset struct {
 	tileformat mbtiles.TileFormat
 	tilesize   uint32
 	published  bool
-	locked     bool
+	locked     atomic.Bool
 	router     *http.ServeMux
 }
 
@@ -302,7 +304,7 @@ func (ts *Tileset) previewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bytes, err := json.Marshal(tileJSON)
+	tileJSONBytes, err := json.Marshal(tileJSON)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		ts.svc.logError("could not render tileJSON for preview for %v: %v", r.URL.Path, err)
@@ -318,7 +320,10 @@ func (ts *Tileset) previewHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		tilesetURL,
 		ts.id,
-		template.JS(string(bytes)),
+		// TileJSON is embedded into a <script> block; escaping "</" prevents
+		// breaking out of the script element (json.Marshal already escapes
+		// <, >, & in strings, this is defense in depth)
+		template.JS(bytes.ReplaceAll(tileJSONBytes, []byte("</"), []byte(`<\/`))),
 		ts.svc.basemapStyleURL,
 		ts.svc.basemapTilesURL,
 	}
@@ -359,7 +364,7 @@ func tilesetLockedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ts *Tileset) isLockedWithTimeout(timeout time.Duration) bool {
-	if ts == nil || !ts.locked {
+	if ts == nil || !ts.locked.Load() {
 		return false
 	}
 
@@ -369,9 +374,9 @@ func (ts *Tileset) isLockedWithTimeout(timeout time.Duration) bool {
 	for {
 		select {
 		case <-timeoutReached:
-			return ts.locked
+			return ts.locked.Load()
 		case <-ticker:
-			if !ts.locked {
+			if !ts.locked.Load() {
 				return false
 			}
 			// otherwise, still locked

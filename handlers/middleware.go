@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"crypto/hmac"
-	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
@@ -18,6 +18,10 @@ type HandlerWrapper func(http.Handler) http.Handler
 // maxSignatureAge defines the maximum amount of time, in seconds
 // that an HMAC signature can remain valid
 const maxSignatureAge = time.Duration(15) * time.Minute
+
+// maxClockSkew defines the maximum amount of time a signature date may be
+// in the future to tolerate clock skew between client and server
+const maxClockSkew = time.Duration(30) * time.Second
 
 // HMACAuthMiddleware wraps incoming requests to enforce HMAC signature authorization.
 // All requests are expected to have either "signature" and "date" query parameters
@@ -51,8 +55,12 @@ func HMACAuthMiddleware(secretKey string, serviceSet *ServiceSet) HandlerWrapper
 				http.Error(w, "Signature date is not valid RFC3339", http.StatusBadRequest)
 				return
 			}
-			if time.Now().Sub(signDate) > maxSignatureAge {
+			if time.Since(signDate) > maxSignatureAge {
 				http.Error(w, "Signature is expired", http.StatusUnauthorized)
+				return
+			}
+			if time.Until(signDate) > maxClockSkew {
+				http.Error(w, "Signature date is in the future", http.StatusUnauthorized)
 				return
 			}
 
@@ -65,9 +73,8 @@ func HMACAuthMiddleware(secretKey string, serviceSet *ServiceSet) HandlerWrapper
 
 			tilesetID := serviceSet.IDFromURLPath(r.URL.Path)
 
-			key := sha1.New()
-			key.Write([]byte(salt + secretKey))
-			hash := hmac.New(sha1.New, key.Sum(nil))
+			key := sha256.Sum256([]byte(salt + secretKey))
+			hash := hmac.New(sha256.New, key[:])
 			message := fmt.Sprintf("%s:%s", rawSignDate, tilesetID)
 			hash.Write([]byte(message))
 			checkSignature := base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
